@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚚</text></svg>">
+<title>מסלול משלוחים לפסח</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; height: 100dvh; overflow: hidden; -webkit-overflow-scrolling: touch; }
+body { font-family: 'Segoe UI', Tahoma, sans-serif; direction: rtl; overscroll-behavior: none; }
+
+@media (min-width: 769px) {
+  body { display: flex; }
+  #map { flex: 1; height: 100vh; height: 100dvh; }
+  #sidebar {
+    width: 400px; height: 100vh; height: 100dvh; overflow-y: auto; background: #f8f9fa;
+    border-left: 2px solid #dee2e6; padding: 12px; font-size: 13px;
+  }
+  #mobileToggle { display: none; }
+}
+
+@media (max-width: 768px) {
+  body { display: flex; flex-direction: column; position: relative; }
+  #map { width: 100%; height: 100vh; height: 100dvh; position: absolute; top: 0; left: 0; z-index: 1; }
+  #sidebar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    z-index: 10; max-height: 55vh; max-height: 55dvh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    background: #f8f9fa; padding: 10px; font-size: 14px;
+    border-top-left-radius: 16px; border-top-right-radius: 16px;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+    transition: transform 0.3s ease;
+  }
+  #sidebar::before {
+    content: ''; display: block; width: 40px; height: 4px;
+    background: #ccc; border-radius: 2px; margin: 0 auto 8px;
+  }
+  #sidebar.collapsed { transform: translateY(calc(100% - 54px)); }
+  #sidebar h2 { font-size: 15px; margin-bottom: 6px; }
+  .stop-item { padding: 12px; margin: 4px 0; border-radius: 8px; }
+  .stop-item .num { min-width: 32px; height: 32px; font-size: 14px; }
+  .stop-item .name { font-size: 15px; }
+  .stop-item .addr { font-size: 13px; }
+  .stop-item .dist { font-size: 12px; }
+  .visit-btn { width: 36px; height: 36px; min-width: 36px; font-size: 18px; }
+  #mobileToggle {
+    display: flex; align-items: center; justify-content: center;
+    position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+    z-index: 20; background: #4285f4; color: white;
+    border: none; border-radius: 24px; padding: 10px 20px;
+    font-size: 14px; font-weight: bold; cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+#sidebar h2 { margin-bottom: 8px; color: #2c3e50; font-size: 16px; }
+#stats { padding: 10px; margin-bottom: 8px; background: #d4edda; border-radius: 6px; font-size: 13px; display: none; }
+.stop-item {
+  padding: 8px 10px; margin: 3px 0; background: white; border-radius: 6px;
+  border-right: 4px solid #4285f4; cursor: pointer; transition: background 0.2s;
+  display: flex; align-items: center; gap: 8px;
+}
+.stop-item:hover { background: #e8f0fe; }
+.stop-item .num {
+  background: #4285f4; color: white; border-radius: 50%; min-width: 26px;
+  height: 26px; display: flex; align-items: center; justify-content: center;
+  font-weight: bold; font-size: 11px; flex-shrink: 0;
+}
+.stop-item.start { border-right-color: #0f9d58; }
+.stop-item.start .num { background: #0f9d58; }
+.stop-item .info { flex: 1; min-width: 0; }
+.stop-item .name { font-weight: bold; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stop-item .addr { color: #666; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stop-item .dist { color: #888; font-size: 10px; margin-top: 2px; }
+.stop-item.visited { background: #e8e8e8; border-right-color: #999; opacity: 0.65; }
+.stop-item.visited .num { background: #999; }
+.stop-item.visited .name { text-decoration: line-through; color: #888; }
+.visit-btn {
+  background: none; border: 2px solid #ccc; border-radius: 50%; width: 30px; height: 30px;
+  min-width: 30px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 16px; color: #ccc; transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent; flex-shrink: 0;
+}
+.visit-btn:hover { border-color: #0f9d58; color: #0f9d58; }
+.visit-btn.checked { background: #0f9d58; border-color: #0f9d58; color: white; }
+#stopList { padding-bottom: env(safe-area-inset-bottom, 20px); }
+@media (max-width: 768px) {
+  #stopList { padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+  #stats { font-size: 13px; }
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="sidebar">
+  <h2>🚚 מסלול משלוחים לפסח</h2>
+  <div id="stats"></div>
+  <div id="visitedStats" style="padding:8px 10px;margin-bottom:8px;background:#fff3cd;border-radius:6px;font-size:13px;display:none;"></div>
+  <div id="stopList"></div>
+</div>
+<button id="mobileToggle" onclick="toggleSidebar()">📋 רשימת תחנות</button>
+
+<script>
+const ADDRESSES = [
+  {name:"אבשלום שריקי",city:"כפר יונה",street:"אהבת אדם",num:"42",phone:"503199536",lat:32.314869,lng:34.949834},
+  {name:"אסף סאייג",city:"כפר יונה",street:"העמק",num:"37",phone:"547664809",lat:32.309444,lng:34.934641},
+  {name:"יובל זינדני",city:"ינוב",street:"הלוטם",num:"190",phone:"54-301-4771",lat:32.308914,lng:34.951081},
+  {name:"הראל כהן",city:"פרדסיה",street:"פישר יונה",num:"4",phone:"522233080",lat:32.3041767,lng:34.9135989},
+  {name:"נופר מימון",city:"קדימה",street:"הארז",num:"50",phone:"524699338",lat:32.2664723,lng:34.9154152},
+  {name:"אסף פיצ'ון",city:"תל מונד",street:"התבור",num:"23",phone:"050-8860908",lat:32.255279,lng:34.916615},
+  {name:"אביב הרציג",city:"תל מונד",street:"האיריס",num:"6",phone:"543451956",lat:32.246369,lng:34.915112},
+  {name:"הראל פיצון",city:"תל מונד",street:"האלון",num:"106",phone:"054-5863718",lat:32.258356,lng:34.918357},
+  {name:"רינה פורטנוי ישי",city:"תל מונד",street:"הכורם",num:"14",phone:"050-6214020",lat:32.253246,lng:34.908542},
+  {name:"נעה רוזנבלט",city:"עולש",street:"מורג",num:"367",phone:"549704076",lat:32.3337098,lng:34.9864374},
+  {name:"אורפז דנינו",city:"יעבץ",street:"הפרדסים",num:"57",phone:"050-7717029",lat:32.275887,lng:34.961079},
+  {name:"שרית פלג",city:"נתניה",street:"עמק חפר",num:"92",phone:"054-6366155",lat:32.344466,lng:34.868972},
+  {name:"קארין ישי",city:"נתניה",street:"שדרות ירושלים",num:"30",phone:"050-4339966",lat:32.323407,lng:34.853909},
+  {name:"אליז ונגר",city:"נתניה",street:"ויסלברגר",num:"5",phone:"058-7937090",lat:32.283421,lng:34.851502},
+  {name:"מור דואק/שלג",city:"נתניה",street:"השומר",num:"8",phone:"052-2010163",lat:32.310572,lng:34.879467},
+  {name:"אורטל מימון",city:"נתניה",street:"תשרי",num:"2",phone:"052-820-3633",lat:32.296019,lng:34.868937},
+  {name:"עדן עובדיה",city:"נתניה",street:"ויצמן",num:"38",phone:"052-772-2892",lat:32.332860,lng:34.858488},
+  {name:"אמיר מיזנר",city:"נתניה",street:"עמק חפר",num:"62",phone:"052-4743313",lat:32.342075,lng:34.867824},
+  {name:"בני בץ'",city:"נתניה",street:"מרשל פייר קניג",num:"33",phone:"544789635",lat:32.305874,lng:34.844802},
+  {name:"שמרית שרעבי",city:"נתניה קרית השרון",street:"הדקל",num:"1",phone:"052-7588158",lat:32.300309,lng:34.873715},
+  {name:"הדס ספיר",city:"נתניה קרית השרון",street:"ראובן",num:"10",phone:"050-6336797",lat:32.301942,lng:34.872395},
+  {name:"אביטל קליין",city:"רעננה",street:"הגדוד העיברי",num:"4",phone:"050-4685448",lat:32.183216,lng:34.864853},
+  {name:"איתי הרשקוביץ",city:"רעננה",street:"הר סיני",num:"6",phone:"544515479",lat:32.182744,lng:34.868575},
+  {name:"עידן חיימוב",city:"הרצליה",street:"נתן אלבז",num:"4",phone:"525631212",lat:32.161633,lng:34.829098},
+  {name:"בר נחמוקה",city:"הרצליה",street:"סעדיה גאון",num:"7",phone:"508638882",lat:32.155045,lng:34.835439},
+  {name:"שי כלדרון",city:"הרצליה",street:"פינסקר",num:"4",phone:"528061012",lat:32.167034,lng:34.837492},
+  {name:"עדי קסיר",city:"הוד השרון",street:"הירמוך",num:"10",phone:"50-685-9211",lat:32.141087,lng:34.884538},
+  {name:"דניאל רז",city:"הוד השרון",street:"פלמח",num:"7",phone:"542803040",lat:32.139969,lng:34.873453},
+  {name:"גל עמרם",city:"רמת השרון",street:"שמואל הנגיד",num:"8",phone:"542524290",lat:32.1299487,lng:34.8566436},
+  {name:"אסף חן",city:"פתח תקווה",street:"העלייה השנייה",num:"6",phone:"526684823",lat:32.086745,lng:34.887081},
+  {name:"ברק דניאל",city:"פתח תקווה",street:"ארלוזרוב",num:"18",phone:"509683331",lat:32.084959,lng:34.874941},
+  {name:"סיוון פסחוב",city:"פתח תקווה",street:"אריה בראון",num:"4",phone:"552279313",lat:32.100914,lng:34.877026},
+  {name:"טל רחמים",city:"פתח תקוה",street:"יעל רום",num:"4",phone:"054-5532680",lat:32.098345,lng:34.879399},
+  {name:"אוריה פרל",city:"פתח תקווה",street:"אשר בר לוי",num:"3",phone:"509242608",lat:32.078078,lng:34.880009},
+  {name:"ליאורה יאנקו",city:"אלעד",street:"בן זכאי",num:"17",phone:"050-4177511",lat:32.0502688,lng:34.948223},
+  {name:"אלון בראי",city:"רמת גן",street:"מרים",num:"9",phone:"050-9364762",lat:32.078501,lng:34.812605},
+  {name:"זוהר גינצלר",city:"ראש העין",street:"חנה רובינא",num:"8",phone:"054-7733674",lat:32.082006,lng:34.983096},
+  {name:"עידן ביטון",city:"חולון",street:"פנחס לבון",num:"18",phone:"054-8173175",lat:32.009347,lng:34.769696},
+  {name:"יובל לוי",city:"חולון",street:"רבינוביץ",num:"81",phone:"546418070",lat:31.9990923,lng:34.7715504},
+  {name:"עמית רחמים",city:"נס ציונה",street:"צופית",num:"14",phone:"526286141",lat:31.908423,lng:34.783174},
+  {name:"שחר נעים",city:"ראשון לציון",street:"שלונסקי",num:"22",phone:"503703199",lat:31.981097,lng:34.771776},
+  {name:"שיראל בוסקילה",city:"חריש",street:"כלנית",num:"10",phone:"546750550",lat:32.453420,lng:35.048428},
+  {name:"יונתן עידאן",city:"פרדס חנה כרכור",street:"אשכולית",num:"30",phone:"50-310-0614",lat:32.465867,lng:34.949654},
+  {name:"עדן לוי",city:"זכרון יעקב",street:"אחי אילת",num:"4",phone:"050-2608560",lat:32.580469,lng:34.950108},
+  {name:"רותם אזרזר",city:"אור עקיבא",street:"מור",num:"21",phone:"524684019",lat:32.4919297,lng:34.9228678},
+  {name:"הילה סטפאני פיטם",city:"שוהם",street:"הארז",num:"34",phone:"054-8180792",lat:32.003415,lng:34.951155},
+  {name:"אוראל ניסן",city:"גדרה",street:"הולצברג שמחה",num:"3",phone:"522401559",lat:31.808287,lng:34.788503},
+  {name:"עמיר בכר",city:"יבנה",street:"האמוראים",num:"9",phone:"544301905",lat:31.8693577,lng:34.7415057},
+  {name:"לירז כהן",city:"גן יבנה",street:"פרי גנן",num:"10",phone:"050-4599663",lat:31.798627,lng:34.704757},
+];
+
+let map, directionsService;
+let allMarkers = [];
+let directionsRenderers = [];
+let optimizedOrder = [];
+let routePolyline = null;
+let visitedSet = new Set(JSON.parse(localStorage.getItem('visitedStops') || '[]'));
+
+function saveVisited() { localStorage.setItem('visitedStops', JSON.stringify([...visitedSet])); }
+function isVisited(addrIdx) { return visitedSet.has(addrIdx); }
+
+function toggleVisited(addrIdx, stopNum) {
+  if (visitedSet.has(addrIdx)) visitedSet.delete(addrIdx); else visitedSet.add(addrIdx);
+  saveVisited();
+  // Update sidebar item
+  const item = document.querySelector(`.stop-item[data-stop="${stopNum}"]`);
+  if (item) {
+    item.classList.toggle('visited', visitedSet.has(addrIdx));
+    const btn = item.querySelector('.visit-btn');
+    if (btn) { btn.classList.toggle('checked', visitedSet.has(addrIdx)); btn.textContent = visitedSet.has(addrIdx) ? '✓' : ''; }
+  }
+  // Update map marker
+  updateMarkerVisited(stopNum, addrIdx);
+  updateVisitedStats();
+}
+
+function updateMarkerVisited(stopNum, addrIdx) {
+  const marker = allMarkers[stopNum];
+  if (!marker) return;
+  const visited = visitedSet.has(addrIdx);
+  const isStart = stopNum === 0;
+  marker.setIcon({
+    path: google.maps.SymbolPath.CIRCLE, scale: 15,
+    fillColor: visited ? '#999' : (isStart ? '#0f9d58' : '#4285f4'),
+    fillOpacity: 1, strokeColor: 'white', strokeWeight: 2,
+  });
+}
+
+function updateVisitedStats() {
+  const total = optimizedOrder.length;
+  const done = optimizedOrder.filter(idx => visitedSet.has(idx)).length;
+  const el = document.getElementById('visitedStats');
+  if (el) el.innerHTML = `✅ <b>${done}</b>/${total} בוצעו`;
+}
+
+function isMobile() { return window.innerWidth <= 768; }
+
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const btn = document.getElementById('mobileToggle');
+  sb.classList.toggle('collapsed');
+  btn.textContent = sb.classList.contains('collapsed') ? '📋 רשימת תחנות' : '🗺️ הראה מפה';
+  setTimeout(() => { if (map) google.maps.event.trigger(map, 'resize'); }, 350);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('sidebar').addEventListener('click', (e) => {
+    if (!isMobile()) return;
+    const rect = document.getElementById('sidebar').getBoundingClientRect();
+    if (e.clientY - rect.top < 30) toggleSidebar();
+  });
+});
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function nearestNeighborTSP(points, startIdx) {
+  const n = points.length;
+  const visited = new Set([startIdx]);
+  const order = [startIdx];
+  while (order.length < n) {
+    const last = order[order.length - 1];
+    let bestDist = Infinity, bestIdx = -1;
+    for (let i = 0; i < n; i++) {
+      if (visited.has(i)) continue;
+      const d = haversine(points[last].lat, points[last].lng, points[i].lat, points[i].lng);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    order.push(bestIdx);
+    visited.add(bestIdx);
+  }
+  return order;
+}
+
+function twoOptImprove(points, order) {
+  const dist = (a, b) => haversine(points[a].lat, points[a].lng, points[b].lat, points[b].lng);
+  let improved = true, iter = 0;
+  while (improved && iter < 300) {
+    improved = false; iter++;
+    for (let i = 1; i < order.length - 2; i++) {
+      for (let j = i + 1; j < order.length - 1; j++) {
+        const d1 = dist(order[i-1], order[i]) + dist(order[j], order[j+1]);
+        const d2 = dist(order[i-1], order[j]) + dist(order[i], order[j+1]);
+        if (d2 < d1 - 0.001) {
+          const seg = order.slice(i, j + 1).reverse();
+          order.splice(i, j - i + 1, ...seg);
+          improved = true;
+        }
+      }
+    }
+  }
+  return order;
+}
+
+function totalDist(points, order) {
+  let t = 0;
+  for (let i = 0; i < order.length - 1; i++)
+    t += haversine(points[order[i]].lat, points[order[i]].lng, points[order[i+1]].lat, points[order[i+1]].lng);
+  return t;
+}
+
+function clearMarkers() { allMarkers.forEach(m => m.setMap(null)); allMarkers = []; }
+function clearRoute() {
+  directionsRenderers.forEach(r => r.setMap(null)); directionsRenderers = [];
+  if (routePolyline) { routePolyline.setMap(null); routePolyline = null; }
+}
+
+function showMarkersAndRoute(order) {
+  clearMarkers(); clearRoute();
+  const bounds = new google.maps.LatLngBounds();
+  const path = [];
+
+  order.forEach((idx, stopNum) => {
+    const a = ADDRESSES[idx];
+    const isStart = stopNum === 0;
+    const pos = { lat: a.lat, lng: a.lng };
+    path.push(pos);
+
+    const visited = isVisited(idx);
+    const marker = new google.maps.Marker({
+      position: pos, map,
+      label: { text: String(stopNum + 1), color: 'white', fontWeight: 'bold', fontSize: '11px' },
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE, scale: 15,
+        fillColor: visited ? '#999' : (isStart ? '#0f9d58' : '#4285f4'),
+        fillOpacity: 1, strokeColor: 'white', strokeWeight: 2,
+      },
+      title: `${stopNum + 1}. ${a.name} - ${a.street} ${a.num}, ${a.city}`,
+      zIndex: isStart ? 1000 : 500 - stopNum,
+    });
+    const iw = new google.maps.InfoWindow({
+      content: `<div style="direction:rtl;font-family:sans-serif;min-width:180px;">
+        <b style="font-size:14px;">${stopNum + 1}. ${a.name}</b><br>
+        <span style="color:#555;">${a.street} ${a.num}, ${a.city}</span><br>
+        📞 <a href="tel:${a.phone}">${a.phone}</a>
+      </div>`
+    });
+    marker.addListener('click', () => {
+      allMarkers.forEach(m => m._iw && m._iw.close());
+      iw.open(map, marker);
+    });
+    marker._iw = iw;
+    allMarkers.push(marker);
+    bounds.extend(pos);
+  });
+
+  routePolyline = new google.maps.Polyline({
+    path, geodesic: true, strokeColor: '#ea4335',
+    strokeOpacity: 0.5, strokeWeight: 3, map,
+  });
+  map.fitBounds(bounds, 50);
+}
+
+function buildStopList(order) {
+  const listEl = document.getElementById('stopList');
+  listEl.innerHTML = '';
+  order.forEach((idx, stopNum) => {
+    const a = ADDRESSES[idx];
+    const isStart = stopNum === 0;
+    const visited = isVisited(idx);
+    const prevDist = stopNum > 0
+      ? haversine(ADDRESSES[order[stopNum-1]].lat, ADDRESSES[order[stopNum-1]].lng, a.lat, a.lng).toFixed(1) : 0;
+    const div = document.createElement('div');
+    div.className = `stop-item ${isStart ? 'start' : ''} ${visited ? 'visited' : ''}`;
+    div.setAttribute('data-stop', stopNum);
+    div.setAttribute('data-addr-idx', idx);
+    div.innerHTML = `
+      <button class="visit-btn ${visited ? 'checked' : ''}" title="סמן כבוצע">${visited ? '✓' : ''}</button>
+      <div class="num">${stopNum + 1}</div>
+      <div class="info">
+        <div class="name">${a.name}</div>
+        <div class="addr">${a.street} ${a.num}, ${a.city}</div>
+        <div class="dist">${isStart ? '🏁 נקודת התחלה' : `📏 ~${prevDist} ק"מ`}</div>
+      </div>`;
+    const btn = div.querySelector('.visit-btn');
+    btn.onclick = (e) => { e.stopPropagation(); toggleVisited(idx, stopNum); };
+    div.onclick = () => {
+      map.panTo({ lat: a.lat, lng: a.lng });
+      map.setZoom(17);
+      google.maps.event.trigger(allMarkers[stopNum], 'click');
+      if (isMobile()) {
+        document.getElementById('sidebar').classList.add('collapsed');
+        document.getElementById('mobileToggle').textContent = '📋 רשימת תחנות';
+        setTimeout(() => google.maps.event.trigger(map, 'resize'), 350);
+      }
+    };
+    listEl.appendChild(div);
+  });
+}
+
+async function drawDrivingRoute(order) {
+  if (routePolyline) { routePolyline.setMap(null); routePolyline = null; }
+  directionsRenderers.forEach(r => r.setMap(null)); directionsRenderers = [];
+
+  const CHUNK = 23;
+  const colors = ['#ea4335', '#1a73e8', '#0f9d58'];
+  let totalDistKm = 0, totalTimeSec = 0;
+
+  for (let start = 0; start < order.length - 1; start += CHUNK) {
+    const end = Math.min(start + CHUNK + 1, order.length);
+    const seg = order.slice(start, end);
+    const origin = { lat: ADDRESSES[seg[0]].lat, lng: ADDRESSES[seg[0]].lng };
+    const dest = { lat: ADDRESSES[seg[seg.length-1]].lat, lng: ADDRESSES[seg[seg.length-1]].lng };
+    const waypoints = seg.slice(1, -1).map(idx => ({
+      location: { lat: ADDRESSES[idx].lat, lng: ADDRESSES[idx].lng }, stopover: true
+    }));
+
+    try {
+      const result = await new Promise((resolve, reject) => {
+        directionsService.route({
+          origin, destination: dest, waypoints,
+          travelMode: 'DRIVING', optimizeWaypoints: false,
+        }, (result, status) => {
+          if (status === 'OK') resolve(result); else reject(status);
+        });
+      });
+      const renderer = new google.maps.DirectionsRenderer({
+        map, directions: result, suppressMarkers: true,
+        polylineOptions: {
+          strokeColor: colors[Math.floor(start / CHUNK) % colors.length],
+          strokeOpacity: 0.8, strokeWeight: 5,
+        }
+      });
+      directionsRenderers.push(renderer);
+
+      result.routes[0].legs.forEach((leg, legIdx) => {
+        totalDistKm += leg.distance.value / 1000;
+        totalTimeSec += leg.duration.value;
+        const stopIdx = start + legIdx + 1;
+        const el = document.querySelector(`.stop-item[data-stop="${stopIdx}"] .dist`);
+        if (el) el.textContent = `🚗 ${leg.distance.text} | ⏱️ ${leg.duration.text}`;
+      });
+    } catch (e) {
+      console.warn('Directions chunk failed:', e);
+    }
+    if (end < order.length) await new Promise(r => setTimeout(r, 300));
+  }
+
+  if (totalTimeSec > 0) {
+    const hours = Math.floor(totalTimeSec / 3600);
+    const mins = Math.round((totalTimeSec % 3600) / 60);
+    document.getElementById('stats').innerHTML =
+      `📊 <b>${order.length}</b> תחנות | 🚗 <b>${totalDistKm.toFixed(1)} ק"מ</b> נהיגה | ⏱️ <b>${hours > 0 ? hours + ' שעות ' : ''}${mins} דקות</b>`;
+  }
+}
+
+
+function initMap() {
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: { lat: 32.3, lng: 34.85 }, zoom: 9,
+    mapTypeControl: true, streetViewControl: false,
+  });
+  directionsService = new google.maps.DirectionsService();
+
+  // Optimize and display immediately
+  const startIdx = ADDRESSES.findIndex(a => a.city.includes('כפר יונה'));
+  let order = nearestNeighborTSP(ADDRESSES, startIdx >= 0 ? startIdx : 0);
+  order = twoOptImprove(ADDRESSES, order);
+  optimizedOrder = order;
+
+  const airDist = totalDist(ADDRESSES, order).toFixed(1);
+  showMarkersAndRoute(order);
+  buildStopList(order);
+
+  const statsEl = document.getElementById('stats');
+  statsEl.style.display = 'block';
+  statsEl.innerHTML = `📊 <b>${order.length}</b> תחנות | 📏 ~${airDist} ק"מ אווירי`;
+
+  document.getElementById('visitedStats').style.display = 'block';
+  updateVisitedStats();
+
+  // Draw driving route in background
+  drawDrivingRoute(order);
+}
+
+window.initMap = initMap;
+</script>
+<script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBfZNVWIsfRNePmKD8epKZPDAqXSkHEOUU&callback=initMap&loading=async&language=he"></script>
+</body>
+</html>
