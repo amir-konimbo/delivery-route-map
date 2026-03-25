@@ -245,15 +245,32 @@ function nearestNeighborTSP(points, startIdx) {
   return order;
 }
 
-function twoOptImprove(points, order) {
-  const dist = (a, b) => haversine(points[a].lat, points[a].lng, points[b].lat, points[b].lng);
+function buildDistMatrix(points) {
+  const n = points.length;
+  const dm = Array(n).fill(null).map(() => Array(n).fill(0));
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++) {
+      const d = haversine(points[i].lat, points[i].lng, points[j].lat, points[j].lng);
+      dm[i][j] = d; dm[j][i] = d;
+    }
+  return dm;
+}
+
+function totalDistDM(dm, order) {
+  let t = 0;
+  for (let i = 0; i < order.length - 1; i++) t += dm[order[i]][order[i+1]];
+  return t;
+}
+
+function twoOptImprove(dm, order) {
   let improved = true, iter = 0;
-  while (improved && iter < 300) {
+  while (improved && iter < 500) {
     improved = false; iter++;
-    for (let i = 1; i < order.length - 2; i++) {
-      for (let j = i + 1; j < order.length - 1; j++) {
-        const d1 = dist(order[i-1], order[i]) + dist(order[j], order[j+1]);
-        const d2 = dist(order[i-1], order[j]) + dist(order[i], order[j+1]);
+    for (let i = 1; i < order.length - 1; i++) {
+      for (let j = i + 1; j < order.length; j++) {
+        const hasAfter = j < order.length - 1;
+        const d1 = dm[order[i-1]][order[i]] + (hasAfter ? dm[order[j]][order[j+1]] : 0);
+        const d2 = dm[order[i-1]][order[j]] + (hasAfter ? dm[order[i]][order[j+1]] : 0);
         if (d2 < d1 - 0.001) {
           const seg = order.slice(i, j + 1).reverse();
           order.splice(i, j - i + 1, ...seg);
@@ -265,23 +282,22 @@ function twoOptImprove(points, order) {
   return order;
 }
 
-function orOptImprove(points, order) {
-  const dist = (a, b) => haversine(points[a].lat, points[a].lng, points[b].lat, points[b].lng);
+function orOptImprove(dm, order) {
+  let currentDist = totalDistDM(dm, order);
   let improved = true;
   while (improved) {
     improved = false;
     for (let segLen = 1; segLen <= 3; segLen++) {
-      for (let i = 1; i < order.length - segLen; i++) {
-        const before = order[i-1], after = order[i+segLen];
-        const seg = order.slice(i, i+segLen);
-        const removeCost = dist(before, seg[0]) + dist(seg[segLen-1], after) - dist(before, after);
-        for (let j = 0; j < order.length - 1; j++) {
-          if (j >= i-1 && j <= i+segLen-1) continue;
-          const insertCost = dist(order[j], seg[0]) + dist(seg[segLen-1], order[j+1]) - dist(order[j], order[j+1]);
-          if (insertCost < removeCost - 0.01) {
-            const removed = order.splice(i, segLen);
-            const insertPos = j < i ? j+1 : j+1-segLen;
-            order.splice(insertPos, 0, ...removed);
+      for (let i = 1; i <= order.length - segLen; i++) {
+        const seg = order.slice(i, i + segLen);
+        const remaining = [...order.slice(0, i), ...order.slice(i + segLen)];
+        for (let j = 1; j <= remaining.length; j++) {
+          if (j === i) continue;
+          const newOrder = [...remaining.slice(0, j), ...seg, ...remaining.slice(j)];
+          const newDist = totalDistDM(dm, newOrder);
+          if (newDist < currentDist - 0.01) {
+            order.splice(0, order.length, ...newOrder);
+            currentDist = newDist;
             improved = true;
             break;
           }
@@ -292,6 +308,40 @@ function orOptImprove(points, order) {
     }
   }
   return order;
+}
+
+function doubleBridge(order) {
+  const n = order.length;
+  if (n < 8) return [...order];
+  const pos = new Set();
+  while (pos.size < 3) pos.add(1 + Math.floor(Math.random() * (n - 2)));
+  const cuts = [...pos].sort((a, b) => a - b);
+  return [
+    ...order.slice(0, cuts[0]),
+    ...order.slice(cuts[1], cuts[2]),
+    ...order.slice(cuts[0], cuts[1]),
+    ...order.slice(cuts[2])
+  ];
+}
+
+function localSearch(dm, order) {
+  order = twoOptImprove(dm, order);
+  order = orOptImprove(dm, order);
+  order = twoOptImprove(dm, order);
+  return order;
+}
+
+function iteratedLocalSearch(dm, initialOrder, maxIter) {
+  maxIter = maxIter || 50;
+  let best = localSearch(dm, [...initialOrder]);
+  let bestDist = totalDistDM(dm, best);
+  for (let i = 0; i < maxIter; i++) {
+    let candidate = doubleBridge(best);
+    candidate = localSearch(dm, candidate);
+    const d = totalDistDM(dm, candidate);
+    if (d < bestDist) { best = candidate; bestDist = d; }
+  }
+  return best;
 }
 
 function totalDist(points, order) {
@@ -455,11 +505,10 @@ function initMap() {
   directionsService = new google.maps.DirectionsService();
 
   // Optimize and display immediately
+  const dm = buildDistMatrix(ADDRESSES);
   const startIdx = ADDRESSES.findIndex(a => a.city.includes('כפר יונה'));
   let order = nearestNeighborTSP(ADDRESSES, startIdx >= 0 ? startIdx : 0);
-  order = twoOptImprove(ADDRESSES, order);
-  order = orOptImprove(ADDRESSES, order);
-  order = twoOptImprove(ADDRESSES, order);
+  order = iteratedLocalSearch(dm, order, 50);
   optimizedOrder = order;
 
   const airDist = totalDist(ADDRESSES, order).toFixed(1);
