@@ -265,6 +265,35 @@ function twoOptImprove(points, order) {
   return order;
 }
 
+function orOptImprove(points, order) {
+  const dist = (a, b) => haversine(points[a].lat, points[a].lng, points[b].lat, points[b].lng);
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (let segLen = 1; segLen <= 3; segLen++) {
+      for (let i = 1; i < order.length - segLen; i++) {
+        const before = order[i-1], after = order[i+segLen];
+        const seg = order.slice(i, i+segLen);
+        const removeCost = dist(before, seg[0]) + dist(seg[segLen-1], after) - dist(before, after);
+        for (let j = 0; j < order.length - 1; j++) {
+          if (j >= i-1 && j <= i+segLen-1) continue;
+          const insertCost = dist(order[j], seg[0]) + dist(seg[segLen-1], order[j+1]) - dist(order[j], order[j+1]);
+          if (insertCost < removeCost - 0.01) {
+            const removed = order.splice(i, segLen);
+            const insertPos = j < i ? j+1 : j+1-segLen;
+            order.splice(insertPos, 0, ...removed);
+            improved = true;
+            break;
+          }
+        }
+        if (improved) break;
+      }
+      if (improved) break;
+    }
+  }
+  return order;
+}
+
 function totalDist(points, order) {
   let t = 0;
   for (let i = 0; i < order.length - 1; i++)
@@ -428,6 +457,8 @@ function initMap() {
   // Optimize and display immediately
   const startIdx = ADDRESSES.findIndex(a => a.city.includes('כפר יונה'));
   let order = nearestNeighborTSP(ADDRESSES, startIdx >= 0 ? startIdx : 0);
+  order = twoOptImprove(ADDRESSES, order);
+  order = orOptImprove(ADDRESSES, order);
   order = twoOptImprove(ADDRESSES, order);
   optimizedOrder = order;
 
